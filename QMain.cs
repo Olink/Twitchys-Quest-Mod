@@ -82,13 +82,13 @@ namespace QuestSystemLUA
             Commands.ChatCommands.Add(new Command("stopquest", QCommands.StopQuest, "stopquest")); 
             
             var table = new SqlTable("QuestPlayers",
-                 new SqlColumn("LogInName", MySqlDbType.Text) { Unique = true },
+                 new SqlColumn("LogInName", MySqlDbType.VarChar, 50) { Unique = true, Length = 50},
                  new SqlColumn("QuestPlayerData", MySqlDbType.Text)
              );
             SQLWriter.EnsureExists(table);
 
             table = new SqlTable("QuestRegions",
-                new SqlColumn("RegionName", MySqlDbType.Text) { Unique = true },
+                new SqlColumn("RegionName", MySqlDbType.VarChar, 50) { Unique = true, Length = 50},
                 new SqlColumn("X1", MySqlDbType.Int32),
                 new SqlColumn("Y1", MySqlDbType.Int32),
                 new SqlColumn("X2", MySqlDbType.Int32),
@@ -123,49 +123,53 @@ namespace QuestSystemLUA
         }
         public void OnUpdate()
         {
-            foreach (QPlayer player in Players)
+            lock (Players)
             {
-                if (!player.IsLoggedIn && player.TSPlayer.IsLoggedIn)
+                foreach (QPlayer player in Players)
                 {
-                    player.MyDBPlayer = QTools.GetStoredPlayerByIdentification(player);
-
-                    if (player.MyDBPlayer == null)
+                    if (!player.IsLoggedIn && player.TSPlayer.IsLoggedIn)
                     {
-                        StoredQPlayer splayer = new StoredQPlayer(player.TSPlayer.UserAccountName, new List<QuestPlayerData>());
-                        StoredPlayers.Add(splayer);
-                        player.MyDBPlayer = splayer;
-                        QTools.UpdateStoredPlayersInDB();
+                        player.MyDBPlayer = QTools.GetStoredPlayerByIdentification(player);
+
+                        if (player.MyDBPlayer == null)
+                        {
+                            StoredQPlayer splayer = new StoredQPlayer(player.TSPlayer.UserAccountName,
+                                                                      new List<QuestPlayerData>());
+                            StoredPlayers.Add(splayer);
+                            player.MyDBPlayer = splayer;
+                            QTools.UpdateStoredPlayersInDB();
+                        }
+
+                        player.IsLoggedIn = true;
                     }
 
-                    player.IsLoggedIn = true;
-                }
-
-                if (player.LastTilePos != new Vector2(player.TSPlayer.TileX, player.TSPlayer.TileY))
-                {
-                    bool inhouse = false;
-                    foreach (QuestRegion qr in QuestRegions)
+                    if (player.LastTilePos != new Vector2(player.TSPlayer.TileX, player.TSPlayer.TileY))
                     {
-                        if (qr.Area.Intersects(new Rectangle(player.TSPlayer.TileX, player.TSPlayer.TileY, 1, 1)))
+                        bool inhouse = false;
+                        foreach (QuestRegion qr in QuestRegions)
                         {
-                            if (player.CurQuestRegion != qr.Name)
+                            if (qr.Area.Intersects(new Rectangle(player.TSPlayer.TileX, player.TSPlayer.TileY, 1, 1)))
                             {
-                                player.CurQuestRegion = qr.Name;
-                                player.InHouse = true;
+                                if (player.CurQuestRegion != qr.Name)
+                                {
+                                    player.CurQuestRegion = qr.Name;
+                                    player.InHouse = true;
 
-                                if (qr.MessageOnEntry != "")
-                                    player.TSPlayer.SendMessage(qr.MessageOnEntry, Color.Magenta);
+                                    if (qr.MessageOnEntry != "")
+                                        player.TSPlayer.SendMessage(qr.MessageOnEntry, Color.Magenta);
+                                }
+                                inhouse = true;
                             }
-                            inhouse = true;
-                        }
-                        if (!inhouse && player.InHouse)
-                        {
-                            if (qr.MessageOnExit != "")
-                                player.TSPlayer.SendMessage(qr.MessageOnExit, Color.Magenta);
-                            player.CurQuestRegion = "";
-                            player.InHouse = false;
-                        }
+                            if (!inhouse && player.InHouse)
+                            {
+                                if (qr.MessageOnExit != "")
+                                    player.TSPlayer.SendMessage(qr.MessageOnExit, Color.Magenta);
+                                player.CurQuestRegion = "";
+                                player.InHouse = false;
+                            }
 
-                        player.LastTilePos = new Vector2(player.TSPlayer.TileX, player.TSPlayer.TileY);
+                            player.LastTilePos = new Vector2(player.TSPlayer.TileX, player.TSPlayer.TileY);
+                        }
                     }
                 }
             }
